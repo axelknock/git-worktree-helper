@@ -391,27 +391,41 @@ _wt_cmd_pr() {
         return 1
     fi
 
-    if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
-        base_ref="refs/heads/main"
-    elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
-        base_ref="refs/remotes/origin/main"
-    elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
-        base_ref="refs/heads/master"
-    elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
-        base_ref="refs/remotes/origin/master"
-    else
-        base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
-        if [[ -z "$base_ref" ]]; then
-            remote_name=$(git -C "$worktree_path" remote | head -n 1)
-            if [[ -n "$remote_name" ]]; then
-                base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
-            fi
+    base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+    if [[ -z "$base_ref" ]]; then
+        remote_name=$(git -C "$worktree_path" remote | head -n 1)
+        if [[ -n "$remote_name" ]]; then
+            base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
         fi
+    fi
 
-        if [[ -z "$base_ref" ]]; then
-            echo "Unable to resolve default branch (main/master/origin/HEAD)"
-            return 1
+    if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
+        if git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/main"; then
+            base_ref="refs/remotes/$remote_name/main"
+        elif git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/master"; then
+            base_ref="refs/remotes/$remote_name/master"
         fi
+    fi
+
+    if [[ -z "$base_ref" ]]; then
+        if git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
+            base_ref="refs/remotes/origin/main"
+        elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
+            base_ref="refs/remotes/origin/master"
+        fi
+    fi
+
+    if [[ -z "$base_ref" ]]; then
+        if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
+            base_ref="refs/heads/main"
+        elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
+            base_ref="refs/heads/master"
+        fi
+    fi
+
+    if [[ -z "$base_ref" ]]; then
+        echo "Unable to resolve default branch (remote HEAD/main/master)"
+        return 1
     fi
 
     base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
