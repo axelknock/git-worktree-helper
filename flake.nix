@@ -43,7 +43,7 @@
       homeManagerModules.default = { config, pkgs, lib, ... }:
         let
           cfg = config.programs.git-worktree-helper;
-          pkg = self.packages.${pkgs.system}.git-worktree-helper;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.git-worktree-helper;
           sourceLine = ''
             source ${pkg}/share/git-worktree-helper/git-worktree-helper.sh
           '';
@@ -67,7 +67,7 @@
             home.packages = [ pkg ];
 
             programs.bash.initExtra = lib.mkIf cfg.enableBash sourceLine;
-            programs.zsh.initExtra = lib.mkIf cfg.enableZsh sourceLine;
+            programs.zsh.initContent = lib.mkIf cfg.enableZsh sourceLine;
           };
         };
     };
