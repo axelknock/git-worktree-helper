@@ -400,8 +400,18 @@ _wt_cmd_pr() {
     elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
         base_ref="refs/remotes/origin/master"
     else
-        echo "Unable to find main or master to compare against"
-        return 1
+        base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+        if [[ -z "$base_ref" ]]; then
+            remote_name=$(git -C "$worktree_path" remote | head -n 1)
+            if [[ -n "$remote_name" ]]; then
+                base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
+            fi
+        fi
+
+        if [[ -z "$base_ref" ]]; then
+            echo "Unable to resolve default branch (main/master/origin/HEAD)"
+            return 1
+        fi
     fi
 
     base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
