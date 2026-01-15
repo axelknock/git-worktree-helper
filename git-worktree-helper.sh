@@ -370,6 +370,7 @@ _wt_cmd_pr() {
     local candidate_ref
     local remote_head_ref
     local pr_url
+    local base_fetch_time
     if [[ "$#" -gt 0 ]]; then
         shift
     fi
@@ -440,6 +441,10 @@ _wt_cmd_pr() {
         fi
 
         if [[ -n "$base_ref" ]]; then
+            base_fetch_time=$(git -C "$worktree_path" reflog show -1 --date=iso --format='%cd' "$base_ref" 2>/dev/null)
+            if [[ -n "$base_fetch_time" ]]; then
+                echo "Default base ref last fetched: $base_fetch_time"
+            fi
             base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
             head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
             if [[ "$base_sha" == "$head_sha" ]]; then
