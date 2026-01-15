@@ -363,6 +363,8 @@ _wt_cmd_pr() {
     local base_sha
     local head_sha
     local remote_name
+    local base_override
+    local skip_noop_check="false"
     if [[ "$#" -gt 0 ]]; then
         shift
     fi
@@ -391,57 +393,79 @@ _wt_cmd_pr() {
         return 1
     fi
 
-    base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
-    if [[ -z "$base_ref" ]]; then
-        remote_name=$(git -C "$worktree_path" remote | head -n 1)
-        if [[ -n "$remote_name" ]]; then
-            base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
+    prev_base_flag="false"
+    for arg in "$@"; do
+        if [[ "$prev_base_flag" == "true" ]]; then
+            base_override="$arg"
+            prev_base_flag="false"
+            continue
         fi
+        if [[ "$arg" == "--base" || "$arg" == "-B" ]]; then
+            prev_base_flag="true"
+            continue
+        fi
+        if [[ "$arg" == --base=* ]]; then
+            base_override="${arg#--base=}"
+        fi
+    done
+
+    if [[ -n "$base_override" ]]; then
+        skip_noop_check="true"
     fi
 
-    if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
-        if git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/main"; then
-            base_ref="refs/remotes/$remote_name/main"
-        elif git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/master"; then
-            base_ref="refs/remotes/$remote_name/master"
-        fi
-    fi
-
-    if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
-        default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
-        if [[ -n "$default_branch" ]]; then
-            candidate_ref="refs/remotes/$remote_name/$default_branch"
-            if git -C "$worktree_path" show-ref --verify --quiet "$candidate_ref"; then
-                base_ref="$candidate_ref"
+    if [[ "$skip_noop_check" != "true" ]]; then
+        base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+        if [[ -z "$base_ref" ]]; then
+            remote_name=$(git -C "$worktree_path" remote | head -n 1)
+            if [[ -n "$remote_name" ]]; then
+                base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
             fi
         fi
-    fi
 
-    if [[ -z "$base_ref" ]]; then
-        if git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
-            base_ref="refs/remotes/origin/main"
-        elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
-            base_ref="refs/remotes/origin/master"
+        if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
+            if git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/main"; then
+                base_ref="refs/remotes/$remote_name/main"
+            elif git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/master"; then
+                base_ref="refs/remotes/$remote_name/master"
+            fi
         fi
-    fi
 
-    if [[ -z "$base_ref" ]]; then
-        if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
-            base_ref="refs/heads/main"
-        elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
-            base_ref="refs/heads/master"
+        if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
+            default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
+            if [[ -n "$default_branch" ]]; then
+                candidate_ref="refs/remotes/$remote_name/$default_branch"
+                if git -C "$worktree_path" show-ref --verify --quiet "$candidate_ref"; then
+                    base_ref="$candidate_ref"
+                fi
+            fi
         fi
-    fi
 
-    if [[ -n "$base_ref" ]]; then
-        base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
-        head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
-        if [[ "$base_sha" == "$head_sha" ]]; then
-            echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
-            return 1
+        if [[ -z "$base_ref" ]]; then
+            if git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
+                base_ref="refs/remotes/origin/main"
+            elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
+                base_ref="refs/remotes/origin/master"
+            fi
         fi
-    else
-        echo "Unable to resolve default branch; skipping no-op check"
+
+        if [[ -z "$base_ref" ]]; then
+            if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
+                base_ref="refs/heads/main"
+            elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
+                base_ref="refs/heads/master"
+            fi
+        fi
+
+        if [[ -n "$base_ref" ]]; then
+            base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
+            head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
+            if [[ "$base_sha" == "$head_sha" ]]; then
+                echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
+                return 1
+            fi
+        else
+            echo "Unable to resolve default branch; skipping no-op check"
+        fi
     fi
 
     pr_url=$(cd "$worktree_path" && gh pr view "$branch" --json url -q .url 2>/dev/null)
