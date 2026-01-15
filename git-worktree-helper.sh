@@ -7,6 +7,7 @@ Usage:
   git-worktree-helper list             List worktrees for the current repository
   git-worktree-helper switch           Fuzzy-switch to an existing worktree
   git-worktree-helper delete [opts]    Delete a worktree (trash by default)
+  git-worktree-helper pr [worktree]   Open a PR for a worktree (requires gh)
   git-worktree-helper help             Show this help
 
 Details:
@@ -20,6 +21,7 @@ Examples:
   git-worktree-helper list
   git-worktree-helper switch
   git-worktree-helper delete
+  git-worktree-helper pr feat-add-auth
 EOF
 }
 
@@ -351,6 +353,43 @@ _wt_cmd_delete() {
     _wt_delete "$@"
 }
 
+_wt_cmd_pr() {
+    local target="${1:-}"
+    local worktree_path
+    local branch
+    shift || true
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "gh not found; install GitHub CLI to open PRs"
+        return 1
+    fi
+
+    _wt_require_repo || return 1
+
+    if [[ -n "$target" && "$target" == -* ]]; then
+        set -- "$target" "$@"
+        target=""
+    fi
+
+    if [[ -n "$target" ]]; then
+        worktree_path=$(_wt_resolve_worktree_path "$target") || return 1
+    else
+        worktree_path=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    fi
+
+    branch=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
+    if [[ "$branch" == "HEAD" ]]; then
+        echo "Worktree is in detached HEAD: $worktree_path"
+        return 1
+    fi
+
+    if [[ "$#" -eq 0 ]]; then
+        (cd "$worktree_path" && gh pr create --web)
+    else
+        (cd "$worktree_path" && gh pr create "$@")
+    fi
+}
+
 git-worktree-helper() {
     local command=$1
     shift || true
@@ -370,6 +409,9 @@ git-worktree-helper() {
         ;;
     delete)
         _wt_cmd_delete "$@"
+        ;;
+    pr)
+        _wt_cmd_pr "$@"
         ;;
 
     *)
@@ -404,6 +446,7 @@ _wt_completion() {
         'list:List worktrees for the current repository'
         'switch:Fuzzy-switch to an existing worktree'
         'delete:Delete a worktree'
+        'pr:Open a PR for a worktree (requires gh)'
         'help:Show help'
     )
 
@@ -421,6 +464,9 @@ _wt_completion() {
         _wt_completion_worktrees
         ;;
     switch)
+        _wt_completion_worktrees
+        ;;
+    pr)
         _wt_completion_worktrees
         ;;
     new)
