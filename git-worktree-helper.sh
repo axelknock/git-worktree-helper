@@ -410,7 +410,10 @@ _wt_cmd_pr() {
     if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
         default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
         if [[ -n "$default_branch" ]]; then
-            base_ref="refs/remotes/$remote_name/$default_branch"
+            candidate_ref="refs/remotes/$remote_name/$default_branch"
+            if git -C "$worktree_path" show-ref --verify --quiet "$candidate_ref"; then
+                base_ref="$candidate_ref"
+            fi
         fi
     fi
 
@@ -439,6 +442,12 @@ _wt_cmd_pr() {
         fi
     else
         echo "Unable to resolve default branch; skipping no-op check"
+    fi
+
+    pr_url=$(cd "$worktree_path" && gh pr view "$branch" --json url -q .url 2>/dev/null)
+    if [[ -n "$pr_url" ]]; then
+        echo "$pr_url"
+        return 0
     fi
 
     if ! git -C "$worktree_path" rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
