@@ -407,6 +407,13 @@ _wt_cmd_pr() {
         fi
     fi
 
+    if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
+        default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
+        if [[ -n "$default_branch" ]]; then
+            base_ref="refs/remotes/$remote_name/$default_branch"
+        fi
+    fi
+
     if [[ -z "$base_ref" ]]; then
         if git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
             base_ref="refs/remotes/origin/main"
@@ -423,16 +430,15 @@ _wt_cmd_pr() {
         fi
     fi
 
-    if [[ -z "$base_ref" ]]; then
-        echo "Unable to resolve default branch (remote HEAD/main/master)"
-        return 1
-    fi
-
-    base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
-    head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
-    if [[ "$base_sha" == "$head_sha" ]]; then
-        echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
-        return 1
+    if [[ -n "$base_ref" ]]; then
+        base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
+        head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
+        if [[ "$base_sha" == "$head_sha" ]]; then
+            echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
+            return 1
+        fi
+    else
+        echo "Unable to resolve default branch; skipping no-op check"
     fi
 
     if ! git -C "$worktree_path" rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
