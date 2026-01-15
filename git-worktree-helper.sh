@@ -8,6 +8,7 @@ Usage:
   git-worktree-helper switch           Fuzzy-switch to an existing worktree
   git-worktree-helper delete [opts]    Delete a worktree (trash by default)
   git-worktree-helper pr [worktree]   Open a PR for a worktree (requires gh)
+  git-worktree-helper prune [opts]    Remove worktrees with closed PRs (requires gh)
   git-worktree-helper help             Show this help
 
 Details:
@@ -22,6 +23,7 @@ Examples:
   git-worktree-helper switch
   git-worktree-helper delete
   git-worktree-helper pr feat-add-auth
+  git-worktree-helper prune
 EOF
 }
 
@@ -390,6 +392,76 @@ _wt_cmd_pr() {
     fi
 }
 
+_wt_cmd_prune() {
+    local force=false
+    local pruned=0
+    local target_state
+    local current_root
+    local repo_root
+    local candidates
+    local gh_bin
+    local cwd
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --force | -f)
+            force=true
+            ;;
+        --help | -h)
+            echo "Usage: git-worktree-helper prune [--force]"
+            return 0
+            ;;
+        *)
+            echo "Unexpected argument: $1"
+            return 1
+            ;;
+        esac
+        shift
+    done
+
+    gh_bin=$(command -v gh 2>/dev/null)
+    if [[ -z "$gh_bin" ]]; then
+        echo "gh not found; install GitHub CLI to prune PR worktrees"
+        return 1
+    fi
+
+    _wt_require_repo || return 1
+
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    current_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    candidates=$(_wt_worktree_candidates)
+    cwd=$PWD
+
+    cd "$repo_root" || return 1
+
+    while IFS=$'\t' read -r branch worktree_path; do
+        if [[ "$branch" == "(detached)" || -z "$branch" || -z "$worktree_path" ]]; then
+            continue
+        fi
+
+        target_state=$("$gh_bin" pr view --json state --jq '.state' "$branch" 2>/dev/null) || continue
+
+        if [[ "$target_state" == "CLOSED" || "$target_state" == "MERGED" ]]; then
+            if [[ "$worktree_path" == "$current_root" ]]; then
+                echo "Skipping current worktree: $worktree_path"
+                continue
+            fi
+            if [[ "$force" == true ]]; then
+                _wt_delete --force "$worktree_path" || return 1
+            else
+                _wt_delete "$worktree_path" || return 1
+            fi
+            pruned=$((pruned + 1))
+        fi
+    done <<<"$candidates"
+
+    cd "$cwd" || return 1
+
+    if [[ "$pruned" -eq 0 ]]; then
+        echo "No worktrees with closed PRs"
+    fi
+}
+
 git-worktree-helper() {
     local command=$1
     shift || true
@@ -412,6 +484,9 @@ git-worktree-helper() {
         ;;
     pr)
         _wt_cmd_pr "$@"
+        ;;
+    prune)
+        _wt_cmd_prune "$@"
         ;;
 
     *)
@@ -447,6 +522,7 @@ _wt_completion() {
         'switch:Fuzzy-switch to an existing worktree'
         'delete:Delete a worktree'
         'pr:Open a PR for a worktree (requires gh)'
+        'prune:Remove worktrees with closed PRs (requires gh)'
         'help:Show help'
     )
 
@@ -468,6 +544,12 @@ _wt_completion() {
         ;;
     pr)
         _wt_completion_worktrees
+        ;;
+    prune)
+        if [[ $words[CURRENT] == --* ]]; then
+            compadd -- --force
+            return
+        fi
         ;;
     new)
         _message 'branch name'

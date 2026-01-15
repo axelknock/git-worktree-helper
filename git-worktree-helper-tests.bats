@@ -78,3 +78,31 @@ EOF
     [[ "$output" == *"gh:$expected:"* ]] || [[ "$output" == *"gh:$expected_real:"* ]]
     [[ "$output" == *"pr create --web"* ]]
 }
+
+@test "gwh prune removes worktrees with closed prs" {
+    mkdir -p "$tmpdir/bin"
+    cat >"$tmpdir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    branch="${3:-}"
+    if [[ "$branch" == "feat-closed" ]]; then
+        echo "CLOSED"
+        exit 0
+    fi
+    if [[ "$branch" == "feat-open" ]]; then
+        echo "OPEN"
+        exit 0
+    fi
+fi
+exit 1
+EOF
+    chmod +x "$tmpdir/bin/gh"
+
+    run zsh -c 'source "$WT_SCRIPT"; PATH="'"$tmpdir"'/bin:$PATH"; cd "$REPO"; gwh new "feat/closed" >/dev/null; cd "$REPO"; gwh new "feat/open" >/dev/null; cd "$REPO"; gwh prune --force'
+    [ "$status" -eq 0 ]
+
+    closed_path="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-closed"
+    open_path="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-open"
+    [ ! -e "$closed_path" ]
+    [ -d "$open_path" ]
+}
