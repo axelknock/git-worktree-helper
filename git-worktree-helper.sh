@@ -368,6 +368,7 @@ _wt_cmd_pr() {
     local prev_base_flag="false"
     local default_branch
     local candidate_ref
+    local remote_head_ref
     local pr_url
     if [[ "$#" -gt 0 ]]; then
         shift
@@ -417,45 +418,24 @@ _wt_cmd_pr() {
     fi
 
     if [[ "$skip_noop_check" != "true" ]]; then
-        base_ref=$(git -C "$worktree_path" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
-        if [[ -z "$base_ref" ]]; then
+        base_ref=""
+        if git -C "$worktree_path" remote get-url origin >/dev/null 2>&1; then
+            remote_name="origin"
+        else
             remote_name=$(git -C "$worktree_path" remote | head -n 1)
-            if [[ -n "$remote_name" ]]; then
-                base_ref=$(git -C "$worktree_path" symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
-            fi
         fi
 
-        if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
-            if git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/main"; then
-                base_ref="refs/remotes/$remote_name/main"
-            elif git -C "$worktree_path" show-ref --verify --quiet "refs/remotes/$remote_name/master"; then
-                base_ref="refs/remotes/$remote_name/master"
-            fi
-        fi
-
-        if [[ -z "$base_ref" && -n "${remote_name:-}" ]]; then
-            default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
-            if [[ -n "$default_branch" ]]; then
-                candidate_ref="refs/remotes/$remote_name/$default_branch"
-                if git -C "$worktree_path" show-ref --verify --quiet "$candidate_ref"; then
-                    base_ref="$candidate_ref"
+        if [[ -n "$remote_name" ]]; then
+            remote_head_ref="refs/remotes/$remote_name/HEAD"
+            base_ref=$(git -C "$worktree_path" symbolic-ref -q "$remote_head_ref" 2>/dev/null)
+            if [[ -z "$base_ref" ]]; then
+                default_branch=$(git -C "$worktree_path" remote show "$remote_name" 2>/dev/null | awk -F': ' '/HEAD branch:/ { print $2 }')
+                if [[ -n "$default_branch" ]]; then
+                    candidate_ref="refs/remotes/$remote_name/$default_branch"
+                    if git -C "$worktree_path" show-ref --verify --quiet "$candidate_ref"; then
+                        base_ref="$candidate_ref"
+                    fi
                 fi
-            fi
-        fi
-
-        if [[ -z "$base_ref" ]]; then
-            if git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
-                base_ref="refs/remotes/origin/main"
-            elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
-                base_ref="refs/remotes/origin/master"
-            fi
-        fi
-
-        if [[ -z "$base_ref" ]]; then
-            if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
-                base_ref="refs/heads/main"
-            elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
-                base_ref="refs/heads/master"
             fi
         fi
 
@@ -467,7 +447,7 @@ _wt_cmd_pr() {
                 return 1
             fi
         else
-            echo "Unable to resolve default branch; skipping no-op check"
+            echo "Warning: unable to resolve default base ref locally; skipping no-op check."
         fi
     fi
 
