@@ -538,6 +538,7 @@ _wt_cmd_prune() {
                 echo "Skipping current worktree: $worktree_path"
                 continue
             fi
+            echo "Pruning worktree: $branch"
             if [[ "$force" == true ]]; then
                 _wt_delete --force "$worktree_path" || return 1
             else
