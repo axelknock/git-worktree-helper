@@ -365,6 +365,10 @@ _wt_cmd_pr() {
     local remote_name
     local base_override
     local skip_noop_check="false"
+    local prev_base_flag="false"
+    local default_branch
+    local candidate_ref
+    local pr_url
     if [[ "$#" -gt 0 ]]; then
         shift
     fi
@@ -393,7 +397,6 @@ _wt_cmd_pr() {
         return 1
     fi
 
-    prev_base_flag="false"
     for arg in "$@"; do
         if [[ "$prev_base_flag" == "true" ]]; then
             base_override="$arg"
