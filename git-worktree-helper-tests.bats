@@ -62,3 +62,19 @@ teardown() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"Multiple worktrees match; use a longer name"* ]]
 }
+
+@test "gwh pr runs gh in the worktree when available" {
+    mkdir -p "$tmpdir/bin"
+    cat >"$tmpdir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "gh:$PWD:$*"
+EOF
+    chmod +x "$tmpdir/bin/gh"
+
+    run zsh -c 'source "$WT_SCRIPT"; PATH="'"$tmpdir"'/bin:$PATH"; cd "$REPO"; gwh new "feat/demo" >/dev/null; cd "$REPO"; gwh pr feat-demo'
+    [ "$status" -eq 0 ]
+    expected="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-demo"
+    expected_real=$(cd "$expected" && pwd -P)
+    [[ "$output" == *"gh:$expected:"* ]] || [[ "$output" == *"gh:$expected_real:"* ]]
+    [[ "$output" == *"pr create --web"* ]]
+}
