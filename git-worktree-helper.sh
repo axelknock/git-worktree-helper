@@ -359,7 +359,12 @@ _wt_cmd_pr() {
     local target="${1:-}"
     local worktree_path
     local branch
-    shift || true
+    local base_ref
+    local base_sha
+    local head_sha
+    if [[ "$#" -gt 0 ]]; then
+        shift
+    fi
 
     if ! command -v gh >/dev/null 2>&1; then
         echo "gh not found; install GitHub CLI to open PRs"
@@ -382,6 +387,26 @@ _wt_cmd_pr() {
     branch=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
     if [[ "$branch" == "HEAD" ]]; then
         echo "Worktree is in detached HEAD: $worktree_path"
+        return 1
+    fi
+
+    if git -C "$worktree_path" show-ref --verify --quiet refs/heads/main; then
+        base_ref="refs/heads/main"
+    elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/main; then
+        base_ref="refs/remotes/origin/main"
+    elif git -C "$worktree_path" show-ref --verify --quiet refs/heads/master; then
+        base_ref="refs/heads/master"
+    elif git -C "$worktree_path" show-ref --verify --quiet refs/remotes/origin/master; then
+        base_ref="refs/remotes/origin/master"
+    else
+        echo "Unable to find main or master to compare against"
+        return 1
+    fi
+
+    base_sha=$(git -C "$worktree_path" rev-parse "$base_ref" 2>/dev/null) || return 1
+    head_sha=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null) || return 1
+    if [[ "$base_sha" == "$head_sha" ]]; then
+        echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
         return 1
     fi
 
@@ -464,7 +489,9 @@ _wt_cmd_prune() {
 
 git-worktree-helper() {
     local command=$1
-    shift || true
+    if [[ "$#" -gt 0 ]]; then
+        shift
+    fi
 
     case "$command" in
     "" | help | -h | --help)
