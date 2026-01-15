@@ -1,13 +1,13 @@
 _wt_help() {
     cat <<'EOF'
-wt — git worktree helper
+git-worktree-helper — git worktree helper
 
 Usage:
-  wt new <branch>     Create a new worktree and cd into it
-  wt list             List worktrees for the current repository
-  wt switch           Fuzzy-switch to an existing worktree
-  wt delete [opts]    Delete a worktree (trash by default)
-  wt help             Show this help
+  git-worktree-helper new <branch>     Create a new worktree and cd into it
+  git-worktree-helper list             List worktrees for the current repository
+  git-worktree-helper switch           Fuzzy-switch to an existing worktree
+  git-worktree-helper delete [opts]    Delete a worktree (trash by default)
+  git-worktree-helper help             Show this help
 
 Details:
   • Branch names are normalized (spaces and slashes become '-')
@@ -16,16 +16,16 @@ Details:
   • Existing branches are reused if present
 
 Examples:
-  wt new "feat/add auth"
-  wt list
-  wt switch
-  wt delete
+  git-worktree-helper new "feat/add auth"
+  git-worktree-helper list
+  git-worktree-helper switch
+  git-worktree-helper delete
 EOF
 }
 
 _wt_debug() {
     if [[ -n "${WT_DEBUG:-}" ]]; then
-        printf '[wt] %s\n' "$*" >&2
+        printf '[gwh] %s\n' "$*" >&2
     fi
 }
 
@@ -79,7 +79,7 @@ _wt_resolve_worktree_path() {
         if [[ "$match_count" -eq 1 ]]; then
             worktree_path="$matches"
         else
-            echo "Multiple worktrees match; use a longer name"
+            echo "Multiple worktrees match; use a longer name" >&2
             return 1
         fi
     fi
@@ -109,7 +109,7 @@ _wt_cmd_switch() {
         return 0
     fi
 
-    echo "Usage: wt switch <worktree>"
+    echo "Usage: git-worktree-helper switch <worktree>"
     return 1
 }
 
@@ -213,7 +213,7 @@ _wt_cmd_new() {
     local worktree_path
 
     if [[ -z "$branch_raw" ]]; then
-        echo "Usage: wt new <branch-name>"
+        echo "Usage: git-worktree-helper new <branch-name>"
         return 1
     fi
 
@@ -235,7 +235,7 @@ _wt_cmd_new() {
             echo "Worktree already exists: $worktree_path"
         else
             echo "Path exists but is not a registered worktree: $worktree_path"
-            echo "Delete it with: wt delete --force $branch"
+            echo "Delete it with: git-worktree-helper delete --force $branch"
         fi
         return 1
     fi
@@ -243,9 +243,9 @@ _wt_cmd_new() {
     mkdir -p "$(dirname "$worktree_path")"
 
     if git show-ref --verify --quiet "refs/heads/$branch"; then
-        git worktree add "$worktree_path" "$branch"
+        git worktree add -q "$worktree_path" "$branch"
     else
-        git worktree add -b "$branch" "$worktree_path"
+        git worktree add -q -b "$branch" "$worktree_path"
     fi
 
     cd "$worktree_path"
@@ -284,7 +284,7 @@ _wt_delete() {
             keep=true
             ;;
         --help | -h)
-            echo "Usage: wt delete [--force] [--keep] [branch-or-path]"
+            echo "Usage: git-worktree-helper delete [--force] [--keep] [branch-or-path]"
             return 0
             ;;
         *)
@@ -302,7 +302,7 @@ _wt_delete() {
     _wt_require_repo || return 1
 
     if [[ -z "$target" ]]; then
-        echo "Usage: wt delete [--force] [--keep] <worktree>"
+        echo "Usage: git-worktree-helper delete [--force] [--keep] <worktree>"
         return 1
     else
         worktree_path=$(_wt_resolve_worktree_path "$target") || true
@@ -351,7 +351,7 @@ _wt_cmd_delete() {
     _wt_delete "$@"
 }
 
-wt() {
+git-worktree-helper() {
     local command=$1
     shift || true
 
@@ -379,6 +379,10 @@ wt() {
         return 1
         ;;
     esac
+}
+
+gwh() {
+    git-worktree-helper "$@"
 }
 
 _wt_completion_worktrees() {
@@ -426,7 +430,8 @@ _wt_completion() {
 }
 
 if typeset -f compdef >/dev/null 2>&1; then
-    compdef _wt_completion wt
+    compdef _wt_completion git-worktree-helper
+    compdef _wt_completion gwh
 else
     _wt_debug "compdef not available; completion disabled"
 fi
