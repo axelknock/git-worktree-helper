@@ -362,6 +362,7 @@ _wt_cmd_pr() {
     local base_ref
     local base_sha
     local head_sha
+    local remote_name
     if [[ "$#" -gt 0 ]]; then
         shift
     fi
@@ -408,6 +409,21 @@ _wt_cmd_pr() {
     if [[ "$base_sha" == "$head_sha" ]]; then
         echo "Branch matches $(basename "$base_ref"); no changes to open a PR"
         return 1
+    fi
+
+    if ! git -C "$worktree_path" rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
+        if git -C "$worktree_path" remote get-url origin >/dev/null 2>&1; then
+            remote_name="origin"
+        else
+            remote_name=$(git -C "$worktree_path" remote | head -n 1)
+        fi
+
+        if [[ -z "$remote_name" ]]; then
+            echo "No git remote found; add a remote before opening a PR"
+            return 1
+        fi
+
+        git -C "$worktree_path" push -u "$remote_name" "$branch" || return 1
     fi
 
     if [[ "$#" -eq 0 ]]; then
