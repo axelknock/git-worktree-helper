@@ -29,6 +29,14 @@
             installPhase = ''
               install -D -m 0644 git-worktree-helper.sh \
                 $out/share/git-worktree-helper/git-worktree-helper.sh
+              cat > $out/bin/git-worktree-helper <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$out/share/git-worktree-helper/git-worktree-helper.sh"
+git-worktree-helper "$@"
+EOF
+              chmod 0755 $out/bin/git-worktree-helper
+              ln -s $out/bin/git-worktree-helper $out/bin/gwh
             '';
             meta = with pkgs.lib; {
               description = "Git worktree helper functions for bash/zsh";
