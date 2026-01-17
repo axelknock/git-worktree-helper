@@ -7,7 +7,10 @@ bats git-worktree-helper-tests.bats
 ## Nix flake install (bash/zsh)
 
 This repo exposes a `homeManagerModules.default` module that sources the helper
-in your shell, plus a `packages.*.git-worktree-helper` package.
+in your shell, plus a `packages.*.git-worktree-helper` package that installs
+`git-worktree-helper` (and `gwh`) into `PATH` for non-interactive use.
+Sourcing is still recommended for interactive shells so `new`/`switch` can `cd`
+and completions are available.
 
 Example Home Manager configuration:
 
