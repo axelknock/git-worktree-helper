@@ -32,7 +32,7 @@
               mkdir -p $out/bin
               cat > $out/bin/git-worktree-helper <<EOF
 #!/usr/bin/env bash
-set -eo pipefail
+set -o pipefail
 source "${placeholder "out"}/share/git-worktree-helper/git-worktree-helper.sh"
 git-worktree-helper "\$@"
 EOF
