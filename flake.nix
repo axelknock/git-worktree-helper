@@ -29,9 +29,10 @@
             installPhase = ''
               install -D -m 0644 git-worktree-helper.sh \
                 $out/share/git-worktree-helper/git-worktree-helper.sh
+              mkdir -p $out/bin
               cat > $out/bin/git-worktree-helper <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 source "${placeholder "out"}/share/git-worktree-helper/git-worktree-helper.sh"
 git-worktree-helper "\$@"
 EOF
