@@ -68,6 +68,14 @@ teardown() {
     [ ! -e "$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-demo" ]
 }
 
+@test "gwh rename on main worktree renames branch without moving" {
+    run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh rename "feat/main-renamed"; echo "PWD=$(pwd)"; echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"PWD=$REPO"* ]]
+    [[ "$output" == *"BRANCH=feat-main-renamed"* ]]
+    [ ! -e "$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-main-renamed" ]
+}
+
 @test "gwh delete removes worktree with --force" {
     run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh new "feat/demo" >/dev/null; cd "$REPO"; gwh delete --force feat-demo'
     [ "$status" -eq 0 ]

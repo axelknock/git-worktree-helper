@@ -411,6 +411,9 @@ _wt_cmd_rename() {
     local current_branch
     local target_branch
     local target_path
+    local git_dir
+    local common_dir
+    local is_main_worktree="false"
 
     if [[ -z "$branch_raw" ]]; then
         echo "Usage: git-worktree-helper rename <branch-name>"
@@ -419,14 +422,7 @@ _wt_cmd_rename() {
 
     _wt_require_repo || return 1
 
-    if [[ -z "$GIT_WORKTREE_DEFAULT_PATH" ]]; then
-        echo "GIT_WORKTREE_DEFAULT_PATH is not set"
-        return 1
-    fi
-
     current_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
-    repo_root=$(_wt_repo_root) || return 1
-    repo_name=$(basename "$repo_root")
 
     current_branch=$(git -C "$current_root" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
     if [[ "$current_branch" == "HEAD" ]]; then
@@ -440,6 +436,41 @@ _wt_cmd_rename() {
         return 0
     fi
 
+    if git show-ref --verify --quiet "refs/heads/$target_branch"; then
+        echo "Branch already exists: $target_branch"
+        return 1
+    fi
+
+    git_dir=$(git -C "$current_root" rev-parse --git-dir 2>/dev/null) || return 1
+    common_dir=$(git -C "$current_root" rev-parse --git-common-dir 2>/dev/null) || return 1
+    if [[ "$git_dir" != /* ]]; then
+        git_dir=$(cd "$current_root/$git_dir" && pwd -P) || return 1
+    else
+        git_dir=$(cd "$git_dir" && pwd -P) || return 1
+    fi
+    if [[ "$common_dir" != /* ]]; then
+        common_dir=$(cd "$current_root/$common_dir" && pwd -P) || return 1
+    else
+        common_dir=$(cd "$common_dir" && pwd -P) || return 1
+    fi
+
+    if [[ "$git_dir" == "$common_dir" ]]; then
+        is_main_worktree="true"
+    fi
+
+    if [[ "$is_main_worktree" == "true" ]]; then
+        git -C "$current_root" branch -m "$target_branch" || return 1
+        echo "Main worktree cannot be moved; renamed branch to $target_branch" >&2
+        return 0
+    fi
+
+    if [[ -z "$GIT_WORKTREE_DEFAULT_PATH" ]]; then
+        echo "GIT_WORKTREE_DEFAULT_PATH is not set"
+        return 1
+    fi
+
+    repo_root=$(_wt_repo_root) || return 1
+    repo_name=$(basename "$repo_root")
     target_path="$GIT_WORKTREE_DEFAULT_PATH/$repo_name/$target_branch"
     if [[ -e "$target_path" ]]; then
         if _wt_is_registered_worktree "$target_path"; then
@@ -447,11 +478,6 @@ _wt_cmd_rename() {
         else
             echo "Path exists but is not a registered worktree: $target_path"
         fi
-        return 1
-    fi
-
-    if git show-ref --verify --quiet "refs/heads/$target_branch"; then
-        echo "Branch already exists: $target_branch"
         return 1
     fi
 
