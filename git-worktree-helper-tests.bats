@@ -76,6 +76,21 @@ teardown() {
     [ ! -e "$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-main-renamed" ]
 }
 
+@test "gwh new uses bare repo name for worktree root" {
+    bare="$tmpdir/bare.git"
+    worktree="$tmpdir/bare-worktree"
+    git clone --bare "$REPO" "$bare" >/dev/null
+    git -C "$bare" worktree add "$worktree" main >/dev/null
+
+    run zsh -c 'source "$WT_SCRIPT"; cd "'"$worktree"'"; gwh new "feat/bare"; pwd'
+    [ "$status" -eq 0 ]
+    expected="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$bare")/feat-bare"
+    output_real=$(cd "$output" && pwd -P)
+    expected_real=$(cd "$expected" && pwd -P)
+    [ "$output_real" = "$expected_real" ]
+    [ -d "$expected" ]
+}
+
 @test "gwh delete removes worktree with --force" {
     run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh new "feat/demo" >/dev/null; cd "$REPO"; gwh delete --force feat-demo'
     [ "$status" -eq 0 ]
