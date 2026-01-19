@@ -47,13 +47,19 @@ _wt_require_repo() {
 _wt_repo_root() {
     local common_dir
     local repo_root
+    local common_base
 
     common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
     if [[ "$common_dir" != /* ]]; then
         common_dir=$(cd "$common_dir" && pwd -P) || return 1
     fi
 
-    repo_root=$(cd "$common_dir/.." && pwd -P) || return 1
+    common_base=$(basename "$common_dir")
+    if [[ "$common_base" == ".git" ]]; then
+        repo_root=$(cd "$common_dir/.." && pwd -P) || return 1
+    else
+        repo_root="$common_dir"
+    fi
     echo "$repo_root"
 }
 
