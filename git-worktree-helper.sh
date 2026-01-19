@@ -576,6 +576,7 @@ _wt_cmd_pr() {
     local remote_head_ref
     local pr_url
     local base_fetch_time
+    local web_requested="false"
     if [[ "$#" -gt 0 ]]; then
         shift
     fi
@@ -616,6 +617,9 @@ _wt_cmd_pr() {
         fi
         if [[ "$arg" == --base=* ]]; then
             base_override="${arg#--base=}"
+        fi
+        if [[ "$arg" == "--web" ]]; then
+            web_requested="true"
         fi
     done
 
@@ -662,7 +666,7 @@ _wt_cmd_pr() {
     fi
 
     pr_url=$(cd "$worktree_path" && gh pr view "$branch" --json url -q .url 2>/dev/null)
-    if [[ -n "$pr_url" ]]; then
+    if [[ "$pr_url" == http* ]]; then
         echo "$pr_url"
         return 0
     fi
@@ -675,6 +679,14 @@ _wt_cmd_pr() {
         fi
 
         if [[ -z "$remote_name" ]]; then
+            if [[ "$#" -eq 0 || "$web_requested" == "true" ]]; then
+                if [[ "$#" -eq 0 ]]; then
+                    (cd "$worktree_path" && gh pr create --web)
+                else
+                    (cd "$worktree_path" && gh pr create "$@")
+                fi
+                return $?
+            fi
             echo "No git remote found; add a remote before opening a PR"
             return 1
         fi
@@ -736,7 +748,7 @@ _wt_cmd_prune() {
             continue
         fi
 
-        target_state=$("$gh_bin" pr view --json state --jq '.state' "$branch" 2>/dev/null) || continue
+        target_state=$("$gh_bin" pr view "$branch" --json state --jq '.state' 2>/dev/null) || continue
 
         if [[ "$target_state" == "CLOSED" || "$target_state" == "MERGED" ]]; then
             if [[ "$worktree_path" == "$current_root" ]]; then
