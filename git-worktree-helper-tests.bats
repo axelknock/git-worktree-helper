@@ -41,6 +41,14 @@ teardown() {
     [ -d "$expected" ]
 }
 
+@test "gwh new without name generates a worktree" {
+    run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh new 2>/dev/null; pwd'
+    [ "$status" -eq 0 ]
+    base="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")"
+    [[ "$output" == "$base/"* ]]
+    [ -d "$output" ]
+}
+
 @test "gwh switch moves to worktree" {
     run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh new "feat/demo" >/dev/null; cd "$REPO"; gwh switch feat-demo; pwd'
     [ "$status" -eq 0 ]
@@ -48,6 +56,16 @@ teardown() {
     output_real=$(cd "$output" && pwd -P)
     expected_real=$(cd "$expected" && pwd -P)
     [ "$output_real" = "$expected_real" ]
+}
+
+@test "gwh rename renames the current worktree" {
+    run zsh -c 'source "$WT_SCRIPT"; cd "$REPO"; gwh new "feat/demo" >/dev/null; gwh rename "feat/renamed"; echo "PWD=$(pwd)"; echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)"'
+    [ "$status" -eq 0 ]
+    expected="$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-renamed"
+    [[ "$output" == *"PWD=$expected"* ]]
+    [[ "$output" == *"BRANCH=feat-renamed"* ]]
+    [ -d "$expected" ]
+    [ ! -e "$GIT_WORKTREE_DEFAULT_PATH/$(basename "$REPO")/feat-demo" ]
 }
 
 @test "gwh delete removes worktree with --force" {

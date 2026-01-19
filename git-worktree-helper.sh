@@ -3,7 +3,8 @@ _wt_help() {
 git-worktree-helper — git worktree helper
 
 Usage:
-  git-worktree-helper new <branch>     Create a new worktree and cd into it
+  git-worktree-helper new [branch]     Create a new worktree and cd into it
+  git-worktree-helper rename <branch>  Rename the current worktree
   git-worktree-helper list             List worktrees for the current repository
   git-worktree-helper switch           Fuzzy-switch to an existing worktree
   git-worktree-helper delete [opts]    Delete a worktree (trash by default)
@@ -13,12 +14,15 @@ Usage:
 
 Details:
   • Branch names are normalized (spaces and slashes become '-')
+  • If no branch name is provided, a random name is generated
   • Worktrees are created under:
       $GIT_WORKTREE_DEFAULT_PATH/<repo>/<branch>
   • Existing branches are reused if present
 
 Examples:
   git-worktree-helper new "feat/add auth"
+  git-worktree-helper new
+  git-worktree-helper rename "fix/rename me"
   git-worktree-helper list
   git-worktree-helper switch
   git-worktree-helper delete
@@ -40,6 +44,19 @@ _wt_require_repo() {
     fi
 }
 
+_wt_repo_root() {
+    local common_dir
+    local repo_root
+
+    common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+    if [[ "$common_dir" != /* ]]; then
+        common_dir=$(cd "$common_dir" && pwd -P) || return 1
+    fi
+
+    repo_root=$(cd "$common_dir/.." && pwd -P) || return 1
+    echo "$repo_root"
+}
+
 _wt_worktree_candidates() {
     _wt_debug "worktree_candidates: start"
     git worktree list --porcelain | awk '
@@ -59,6 +76,132 @@ _wt_normalize_branch() {
     echo "$1" |
         tr '[:upper:]' '[:lower:]' |
         sed -E 's/[[:space:]]+/-/g; s|/|-|g; s/-+/-/g'
+}
+
+_wt_random_index() {
+    local max="$1"
+    local rand
+
+    if [[ -z "$max" || "$max" -le 0 ]]; then
+        echo 0
+        return 0
+    fi
+
+    if [[ -n "${RANDOM+x}" ]]; then
+        echo $((RANDOM % max))
+        return 0
+    fi
+
+    rand=$(od -An -N2 -tu2 /dev/urandom 2>/dev/null | tr -d ' ')
+    if [[ -n "$rand" ]]; then
+        echo $((rand % max))
+        return 0
+    fi
+
+    echo $(( $(date +%s) % max ))
+}
+
+_wt_random_choice() {
+    local choices="$1"
+    local count
+    local index
+
+    count=$(echo "$choices" | awk 'NF { count++ } END { print count + 0 }')
+    if [[ "$count" -eq 0 ]]; then
+        return 1
+    fi
+
+    index=$(_wt_random_index "$count")
+    echo "$choices" | awk -v target=$((index + 1)) 'NR == target { print; exit }'
+}
+
+_wt_name_in_use() {
+    local branch="$1"
+    local worktree_path="$2"
+
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        return 0
+    fi
+
+    if [[ -e "$worktree_path" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+_wt_generate_random_branch_name() {
+    local repo_name="$1"
+    local adjectives nouns
+    local adjective noun
+    local attempt
+    local branch
+    local worktree_path
+
+    adjectives=$(
+        cat <<'EOF'
+brisk
+bright
+calm
+clever
+dapper
+eager
+fabled
+glossy
+grand
+hollow
+jolly
+keen
+lucid
+nimble
+peppy
+plucky
+quiet
+rapid
+spry
+sturdy
+vivid
+EOF
+    )
+
+    nouns=$(
+        cat <<'EOF'
+badger
+beacon
+comet
+delta
+fox
+harbor
+heron
+javelin
+meadow
+meteor
+otter
+quartz
+raven
+ridge
+rocket
+sable
+summit
+thrush
+valley
+willow
+zephyr
+EOF
+    )
+
+    for attempt in {1..40}; do
+        adjective=$(_wt_random_choice "$adjectives") || return 1
+        noun=$(_wt_random_choice "$nouns") || return 1
+        branch=$(_wt_normalize_branch "${adjective}-${noun}")
+        worktree_path="$GIT_WORKTREE_DEFAULT_PATH/$repo_name/$branch"
+        if ! _wt_name_in_use "$branch" "$worktree_path"; then
+            echo "$branch"
+            return 0
+        fi
+    done
+
+    echo "worktree-$(date +%Y%m%d%H%M%S)"
 }
 
 _wt_resolve_worktree_path() {
@@ -122,7 +265,7 @@ _wt_repo_worktree_base() {
         return 1
     fi
 
-    repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    repo_root=$(_wt_repo_root) || return 1
     repo_name=$(basename "$repo_root")
     echo "$GIT_WORKTREE_DEFAULT_PATH/$repo_name"
 }
@@ -215,11 +358,7 @@ _wt_cmd_new() {
     local repo_name
     local branch
     local worktree_path
-
-    if [[ -z "$branch_raw" ]]; then
-        echo "Usage: git-worktree-helper new <branch-name>"
-        return 1
-    fi
+    local branch_generated="false"
 
     _wt_require_repo || return 1
 
@@ -228,10 +367,15 @@ _wt_cmd_new() {
         return 1
     fi
 
-    repo_root=$(git rev-parse --show-toplevel)
+    repo_root=$(_wt_repo_root) || return 1
     repo_name=$(basename "$repo_root")
 
-    branch=$(_wt_normalize_branch "$branch_raw")
+    if [[ -z "$branch_raw" ]]; then
+        branch=$(_wt_generate_random_branch_name "$repo_name") || return 1
+        branch_generated="true"
+    else
+        branch=$(_wt_normalize_branch "$branch_raw")
+    fi
     worktree_path="$GIT_WORKTREE_DEFAULT_PATH/$repo_name/$branch"
 
     if [[ -e "$worktree_path" ]]; then
@@ -246,6 +390,10 @@ _wt_cmd_new() {
 
     mkdir -p "$(dirname "$worktree_path")"
 
+    if [[ "$branch_generated" == "true" ]]; then
+        printf 'Generated branch name: %s\n' "$branch" >&2
+    fi
+
     if git show-ref --verify --quiet "refs/heads/$branch"; then
         git worktree add -q "$worktree_path" "$branch"
     else
@@ -253,6 +401,63 @@ _wt_cmd_new() {
     fi
 
     cd "$worktree_path"
+}
+
+_wt_cmd_rename() {
+    local branch_raw="$1"
+    local repo_root
+    local repo_name
+    local current_root
+    local current_branch
+    local target_branch
+    local target_path
+
+    if [[ -z "$branch_raw" ]]; then
+        echo "Usage: git-worktree-helper rename <branch-name>"
+        return 1
+    fi
+
+    _wt_require_repo || return 1
+
+    if [[ -z "$GIT_WORKTREE_DEFAULT_PATH" ]]; then
+        echo "GIT_WORKTREE_DEFAULT_PATH is not set"
+        return 1
+    fi
+
+    current_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    repo_root=$(_wt_repo_root) || return 1
+    repo_name=$(basename "$repo_root")
+
+    current_branch=$(git -C "$current_root" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
+    if [[ "$current_branch" == "HEAD" ]]; then
+        echo "Worktree is in detached HEAD: $current_root"
+        return 1
+    fi
+
+    target_branch=$(_wt_normalize_branch "$branch_raw")
+    if [[ "$target_branch" == "$current_branch" ]]; then
+        echo "Worktree already named: $target_branch"
+        return 0
+    fi
+
+    target_path="$GIT_WORKTREE_DEFAULT_PATH/$repo_name/$target_branch"
+    if [[ -e "$target_path" ]]; then
+        if _wt_is_registered_worktree "$target_path"; then
+            echo "Worktree already exists: $target_path"
+        else
+            echo "Path exists but is not a registered worktree: $target_path"
+        fi
+        return 1
+    fi
+
+    if git show-ref --verify --quiet "refs/heads/$target_branch"; then
+        echo "Branch already exists: $target_branch"
+        return 1
+    fi
+
+    git -C "$current_root" branch -m "$target_branch" || return 1
+    git -C "$current_root" worktree move "$current_root" "$target_path" || return 1
+    cd "$target_path"
 }
 
 _wt_cmd_list() {
@@ -568,6 +773,9 @@ git-worktree-helper() {
     new)
         _wt_cmd_new "$@"
         ;;
+    rename)
+        _wt_cmd_rename "$@"
+        ;;
     list)
         _wt_cmd_list
         ;;
@@ -613,6 +821,7 @@ _wt_completion() {
     _wt_debug "completion: current=$CURRENT words=${words[*]}"
     subcommands=(
         'new:Create a new worktree'
+        'rename:Rename the current worktree'
         'list:List worktrees for the current repository'
         'switch:Fuzzy-switch to an existing worktree'
         'delete:Delete a worktree'
@@ -647,6 +856,9 @@ _wt_completion() {
         fi
         ;;
     new)
+        _message 'branch name'
+        ;;
+    rename)
         _message 'branch name'
         ;;
     esac
